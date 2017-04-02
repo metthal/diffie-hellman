@@ -9,8 +9,13 @@ const std::size_t DefaultBufferSize = 4096;
 }
 
 Service::Service(const std::string& socketPath) : _ioService(), _localEndpoint(socketPath), _socket(_ioService),
-	_recvBuffer(DefaultBufferSize), _recvdBytes(0), _messageQueue()
+	_recvBuffer(DefaultBufferSize), _recvdBytes(0), _messageQueue(), _cipherEngine()
 {
+}
+
+void Service::removeCipher()
+{
+	_cipherEngine.reset(nullptr);
 }
 
 Server::Server(const std::string& socketPath) : Service(socketPath)

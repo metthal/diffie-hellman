@@ -1,6 +1,6 @@
 #include "message.h"
 
-Message::Message() : _data(), _readPos(0), _writePos(0)
+Message::Message() : _data(), _readPos(), _writePos()
 {
 }
 

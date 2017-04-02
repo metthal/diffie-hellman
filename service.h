@@ -7,6 +7,7 @@
 
 #include <boost/asio.hpp>
 
+#include "cipher_engine.h"
 #include "error.h"
 #include "message.h"
 #include "span.h"
@@ -61,6 +62,13 @@ public:
 				std::memset(_recvBuffer.data() + newRecvdBytes, 0, _recvdBytes - newRecvdBytes); // nullify the trailer part of the shifted content (this is just for security reasons)
 				_recvdBytes = newRecvdBytes; // updated the size of the recv. buffer
 
+				if (_cipherEngine != nullptr)
+				{
+					auto encryptedMsg = message->read<EncryptedData>();
+					auto decryptedMsg = _cipherEngine->decrypt(encryptedMsg);
+					message = std::make_unique<Message>(decryptedMsg);
+				}
+
 				_messageQueue.push_back(std::move(message));
 			}
 
@@ -75,8 +83,15 @@ public:
 
 	void sendMessage(const Message& message)
 	{
+		auto transmittedMsg = message;
+		if (_cipherEngine != nullptr)
+		{
+			transmittedMsg = {};
+			transmittedMsg.write<EncryptedData>(_cipherEngine->encrypt(message));
+		}
+
 		boost::system::error_code errorCode;
-		auto msgBuffer = message.serialize();
+		auto msgBuffer = transmittedMsg.serialize();
 		std::size_t sentBytes = 0;
 
 		while (sentBytes < msgBuffer.size())
@@ -102,6 +117,14 @@ public:
 		sendMessage(msg);
 	}
 
+	template <Cipher C>
+	void setCipher(const std::vector<std::uint8_t>& key)
+	{
+		_cipherEngine = std::make_unique<CipherEngine<C>>(key);
+	}
+
+	void removeCipher();
+
 protected:
 	void sendImpl(Message&) {}
 
@@ -118,6 +141,7 @@ protected:
 	std::vector<std::uint8_t> _recvBuffer;
 	std::size_t _recvdBytes;
 	std::deque<std::unique_ptr<Message>> _messageQueue;
+	std::unique_ptr<CipherEngineBase> _cipherEngine;
 };
 
 class Server : public Service

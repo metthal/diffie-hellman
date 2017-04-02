@@ -23,6 +23,11 @@ BigInt::BigInt(const std::string& number) : BigInt(number.c_str())
 {
 }
 
+BigInt::BigInt(const std::vector<std::uint8_t>& bytes) : _impl()
+{
+	mpz_import(_impl.get_mpz_t(), bytes.size(), 1, 1, 0, 0, bytes.data());
+}
+
 BigInt BigInt::random(const BigInt& max)
 {
 	auto number = BN_new();
@@ -30,17 +35,30 @@ BigInt BigInt::random(const BigInt& max)
 	BN_rand(number, max.getNumberOfBits() - 1, 1, 0);
 	std::vector<std::uint8_t> bytes(BN_num_bytes(number));
 	BN_bn2bin(number, bytes.data());
-
-	BigInt bigint;
-	mpz_import(bigint._impl.get_mpz_t(), bytes.size(), 1, 1, 1, 0, bytes.data());
-
 	BN_clear_free(number);
-	return bigint;
+
+	return bytes;
+}
+
+BigInt::operator std::uint64_t() const
+{
+	return _impl.get_ui();
 }
 
 std::size_t BigInt::getNumberOfBits() const
 {
 	return mpz_sizeinbase(_impl.get_mpz_t(), 2);
+}
+
+std::vector<std::uint8_t> BigInt::getRawBytes() const
+{
+	size_t size = getNumberOfBits() / 8 + 1;
+
+	std::vector<std::uint8_t> bytes(size);
+	mpz_export(bytes.data(), &size, 1, 1, 0, 0, _impl.get_mpz_t());
+	bytes.resize(size);
+
+	return bytes;
 }
 
 BigInt BigInt::raise(std::uint64_t power) const
@@ -57,15 +75,10 @@ BigInt BigInt::raiseMod(const BigInt& power, const BigInt& mod) const
 	return result;
 }
 
-BigInt::operator std::uint64_t() const
-{
-	return _impl.get_ui();
-}
-
 const Message& operator>>(const Message& msg, BigInt& bigint)
 {
 	auto bytes = msg.readSequence<std::uint8_t>();
-	mpz_import(bigint._impl.get_mpz_t(), bytes.size(), 1, 1, 0, 0, bytes.data());
+	bigint = bytes;
 	return msg;
 }
 
@@ -77,14 +90,8 @@ std::ostream& operator<<(std::ostream& out, const BigInt& bigint)
 
 Message& operator<<(Message& msg, const BigInt& bigint)
 {
-	size_t size = bigint.getNumberOfBits() / 8 + 1;
-
-	std::vector<std::uint8_t> bytes(size);
-	mpz_export(bytes.data(), &size, 1, 1, 0, 0, bigint._impl.get_mpz_t());
-	bytes.resize(size);
-
+	auto bytes = bigint.getRawBytes();
 	msg.writeSequence<std::uint8_t>(bytes.begin(), bytes.end());
-
 	return msg;
 }
 

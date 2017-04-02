@@ -25,9 +25,14 @@ class Message
 public:
 	constexpr static const std::size_t HeaderSize = sizeof(std::uint16_t);
 
-	explicit Message();
-	explicit Message(const std::vector<std::uint8_t>& data);
-	explicit Message(std::vector<std::uint8_t>&& data);
+	Message();
+	Message(const std::vector<std::uint8_t>& data);
+	Message(std::vector<std::uint8_t>&& data);
+	Message(const Message&) = default;
+	Message(Message&&) = default;
+
+	Message& operator=(const Message&) = default;
+	Message& operator=(Message&&) = default;
 
 	static std::unique_ptr<Message> parse(const Span<std::uint8_t>& buffer);
 

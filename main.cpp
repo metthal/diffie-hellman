@@ -1,9 +1,12 @@
+#include <iomanip>
 #include <iostream>
 #include <vector>
 
 #include <openssl/evp.h>
 
 #include "big_int.h"
+#include "cipher_engine.h"
+#include "hash.h"
 #include "service.h"
 
 using namespace std::string_literals;
@@ -39,12 +42,23 @@ void server()
 			}
 		);
 
-	auto sharedKey = otherKey.raiseMod(secretKey, dhPrime);
+	auto sharedSecret = otherKey.raiseMod(secretKey, dhPrime);
+	auto aesKey = hash<HashAlgo::Sha256>(sharedSecret.getRawBytes());
 
 	//std::cout << "My  public key: " << std::hex << publicKey << std::endl;
 	//std::cout << "Oth public key: " << std::hex << otherKey << std::endl;
 	//std::cout << std::endl;
-	//std::cout << "Shared key: " << std::hex << sharedKey << std::endl;
+	//std::cout << "Shared key: " << std::hex << sharedSecret << std::endl;
+	//std::cout << "AES key: " << std::hex << BigInt{aesKey} << std::endl;
+	//std::cout << "AES key: ";
+	//for (auto byte : aesKey)
+	//{
+	//	std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<std::uint32_t>(byte);
+	//}
+	//std::cout << std::endl;
+
+	server.setCipher<Cipher::Aes256Cbc>(aesKey);
+	server.send("hello");
 }
 
 void client()
@@ -62,12 +76,27 @@ void client()
 			}
 		);
 
-	auto sharedKey = otherKey.raiseMod(secretKey, dhPrime);
+	auto sharedSecret = otherKey.raiseMod(secretKey, dhPrime);
+	auto aesKey = hash<HashAlgo::Sha256>(sharedSecret.getRawBytes());
 
 	//std::cout << "My  public key: " << std::hex << publicKey << std::endl;
 	//std::cout << "Oth public key: " << std::hex << otherKey << std::endl;
 	//std::cout << std::endl;
-	//std::cout << "Shared key: " << std::hex << sharedKey << std::endl;
+	//std::cout << "Shared key: " << std::hex << sharedSecret << std::endl;
+	//std::cout << "AES key: " << std::hex << BigInt{aesKey} << std::endl;
+	//std::cout << "AES key: ";
+	//for (auto byte : aesKey)
+	//{
+	//	std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<std::uint32_t>(byte);
+	//}
+	//std::cout << std::endl;
+
+	client.setCipher<Cipher::Aes256Cbc>(aesKey);
+	client.receive(
+			[&](const Message* msg) {
+				std::cout << msg->read<std::string>() << std::endl;
+			}
+		);
 }
 
 int main(int argc, char* argv[])
@@ -83,5 +112,6 @@ int main(int argc, char* argv[])
 	else
 		return 1;
 
+	EVP_cleanup();
 	return 0;
 }
