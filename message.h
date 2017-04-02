@@ -5,7 +5,9 @@
 #include <type_traits>
 #include <vector>
 
+#include "big_int.h"
 #include "error.h"
+#include "hash.h"
 #include "span.h"
 
 class NotEnoughDataError : public Error
@@ -39,6 +41,12 @@ public:
 	std::size_t getTotalSize() const;
 	const std::vector<std::uint8_t>& getContent() const;
 	std::vector<std::uint8_t> serialize() const;
+
+	template <HashAlgo Algo>
+	BigInt getHash() const
+	{
+		return hash<Algo>(serialize());
+	}
 
 	template <typename T>
 	std::enable_if_t<std::is_integral<T>::value, T> read() const

@@ -9,6 +9,7 @@
 
 #include "cipher_engine.h"
 #include "error.h"
+#include "hash.h"
 #include "message.h"
 #include "span.h"
 
@@ -81,7 +82,7 @@ public:
 		return fn(static_cast<const Message*>(message.get()));
 	}
 
-	void sendMessage(const Message& message)
+	Message sendMessage(const Message& message)
 	{
 		auto transmittedMsg = message;
 		if (_cipherEngine != nullptr)
@@ -107,18 +108,20 @@ public:
 			if (errorCode)
 				throw ConnectionFailureError();
 		}
+
+		return message;
 	}
 
 	template <typename... Ts>
-	void send(Ts&&... args)
+	Message send(Ts&&... args)
 	{
 		Message msg;
 		sendImpl(msg, std::forward<Ts>(args)...);
-		sendMessage(msg);
+		return sendMessage(msg);
 	}
 
 	template <Cipher C>
-	void setCipher(const std::vector<std::uint8_t>& key)
+	void setCipher(const BigInt& key)
 	{
 		_cipherEngine = std::make_unique<CipherEngine<C>>(key);
 	}

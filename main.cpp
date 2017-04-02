@@ -8,6 +8,7 @@
 #include "cipher_engine.h"
 #include "hash.h"
 #include "service.h"
+#include "utils.h"
 
 using namespace std::string_literals;
 
@@ -36,29 +37,29 @@ void server()
 	auto publicKey = dhGenerator.raiseMod(secretKey, dhPrime);
 
 	server.send(publicKey);
-	auto otherKey = server.receive(
+	auto clientPublicKey = server.receive(
 			[&](const Message* msg) {
 				return msg->read<BigInt>();
 			}
 		);
 
-	auto sharedSecret = otherKey.raiseMod(secretKey, dhPrime);
+	auto sharedSecret = clientPublicKey.raiseMod(secretKey, dhPrime);
 	auto aesKey = hash<HashAlgo::Sha256>(sharedSecret.getRawBytes());
 
-	//std::cout << "My  public key: " << std::hex << publicKey << std::endl;
-	//std::cout << "Oth public key: " << std::hex << otherKey << std::endl;
-	//std::cout << std::endl;
-	//std::cout << "Shared key: " << std::hex << sharedSecret << std::endl;
-	//std::cout << "AES key: " << std::hex << BigInt{aesKey} << std::endl;
-	//std::cout << "AES key: ";
-	//for (auto byte : aesKey)
-	//{
-	//	std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<std::uint32_t>(byte);
-	//}
-	//std::cout << std::endl;
-
 	server.setCipher<Cipher::Aes256Cbc>(aesKey);
-	server.send("hello");
+
+	for (auto i = 0; i < 2; ++i)
+	{
+		server.receive(
+				[&](const Message* msg) {
+					auto str = msg->read<std::string>();
+					auto msgHash = msg->getHash<HashAlgo::Sha256>();
+					std::cout << "Message received: " << str << " (" << msgHash << ')' << std::endl;
+
+					server.send(msgHash);
+				}
+			);
+	}
 }
 
 void client()
@@ -70,33 +71,36 @@ void client()
 	auto publicKey = dhGenerator.raiseMod(secretKey, dhPrime);
 
 	client.send(publicKey);
-	auto otherKey = client.receive(
+	auto serverPublicKey = client.receive(
 			[&](const Message* msg) {
 				return msg->read<BigInt>();
 			}
 		);
 
-	auto sharedSecret = otherKey.raiseMod(secretKey, dhPrime);
+	auto sharedSecret = serverPublicKey.raiseMod(secretKey, dhPrime);
 	auto aesKey = hash<HashAlgo::Sha256>(sharedSecret.getRawBytes());
 
-	//std::cout << "My  public key: " << std::hex << publicKey << std::endl;
-	//std::cout << "Oth public key: " << std::hex << otherKey << std::endl;
-	//std::cout << std::endl;
-	//std::cout << "Shared key: " << std::hex << sharedSecret << std::endl;
-	//std::cout << "AES key: " << std::hex << BigInt{aesKey} << std::endl;
-	//std::cout << "AES key: ";
-	//for (auto byte : aesKey)
-	//{
-	//	std::cout << std::hex << std::setw(2) << std::setfill('0') << static_cast<std::uint32_t>(byte);
-	//}
-	//std::cout << std::endl;
-
 	client.setCipher<Cipher::Aes256Cbc>(aesKey);
-	client.receive(
-			[&](const Message* msg) {
-				std::cout << msg->read<std::string>() << std::endl;
-			}
-		);
+
+	const auto valuesToSend = std::vector<std::string>{
+			"Hello World",
+			"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+				"Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat."
+				"Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."
+				"Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
+		};
+	for (const auto& value : valuesToSend)
+	{
+		auto sentMsg = client.send(value);
+		client.receive(
+				[&](const Message* msg) {
+					auto sentMsgHash = sentMsg.getHash<HashAlgo::Sha256>();
+					auto recvdHash = msg->read<BigInt>();
+					bool hashesEqual = sentMsgHash == recvdHash;
+					std::cout << "Received hash: " << recvdHash << " - " << (hashesEqual ? "OK" : "MISMATCH") << std::endl;
+				}
+			);
+	}
 }
 
 int main(int argc, char* argv[])

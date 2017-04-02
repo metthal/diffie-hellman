@@ -5,6 +5,9 @@
 
 #include <openssl/sha.h>
 
+#include "big_int.h"
+#include "span.h"
+
 enum class HashAlgo
 {
 	Sha256
@@ -23,9 +26,15 @@ struct HashTraits<HashAlgo::Sha256>
 };
 
 template <HashAlgo Algo>
-std::vector<std::uint8_t> hash(const std::vector<std::uint8_t>& data)
+BigInt hash(const Span<std::uint8_t>& data)
 {
 	std::vector<std::uint8_t> result(HashTraits<Algo>::DigestSize);
-	(*HashTraits<Algo>::Fn)(data.data(), data.size(), result.data());
+	(*HashTraits<Algo>::Fn)(data.getData(), data.getSize(), result.data());
 	return result;
+}
+
+template <HashAlgo Algo>
+BigInt hash(const std::vector<std::uint8_t>& data)
+{
+	return hash<Algo>({data.data(), data.size()});
 }

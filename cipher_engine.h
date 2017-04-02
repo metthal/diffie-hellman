@@ -22,15 +22,15 @@ struct CipherTraits<Cipher::Aes256Cbc>
 {
 	using InitFnType = decltype(&EVP_aes_256_cbc);
 
-	constexpr static const InitFnType initFn = &EVP_aes_256_cbc;
-	constexpr static const std::size_t blockSize = AES_BLOCK_SIZE;
-	constexpr static const std::size_t ivSize = AES_BLOCK_SIZE;
+	constexpr static const InitFnType InitFn = &EVP_aes_256_cbc;
+	constexpr static const std::size_t BlockSize = AES_BLOCK_SIZE;
+	constexpr static const std::size_t IVSize = AES_BLOCK_SIZE;
 };
 
 class CipherEngineBase
 {
 public:
-	CipherEngineBase(const std::vector<std::uint8_t>& key) : _impl(EVP_CIPHER_CTX_new(), &EVP_CIPHER_CTX_free), _key(key) {}
+	CipherEngineBase(const BigInt& key) : _impl(EVP_CIPHER_CTX_new(), &EVP_CIPHER_CTX_free), _key(key) {}
 
 	virtual EncryptedData encrypt(const Message& msg) const = 0;
 	virtual Message decrypt(const EncryptedData& ciphertext) const = 0;
@@ -39,29 +39,29 @@ protected:
 	using HandleType = std::unique_ptr<EVP_CIPHER_CTX, decltype(&EVP_CIPHER_CTX_free)>;
 
 	HandleType _impl;
-	std::vector<std::uint8_t> _key;
+	BigInt _key;
 };
 
 template <Cipher C>
 class CipherEngine : public CipherEngineBase
 {
 public:
-	CipherEngine(const std::vector<std::uint8_t>& key) : CipherEngineBase(key)
+	CipherEngine(const BigInt& key) : CipherEngineBase(key)
 	{
-		EVP_add_cipher(CipherTraits<C>::initFn());
+		EVP_add_cipher(CipherTraits<C>::InitFn());
 	}
 
 	virtual EncryptedData encrypt(const Message& msg) const override
 	{
 		const auto& plaintext = msg.getContent();
 
-		std::vector<std::uint8_t> iv(CipherTraits<C>::ivSize);
+		std::vector<std::uint8_t> iv(CipherTraits<C>::IVSize);
 		RAND_bytes(iv.data(), iv.size());
 
-		EVP_EncryptInit_ex(_impl.get(), CipherTraits<C>::initFn(), nullptr, _key.data(), iv.data());
+		EVP_EncryptInit_ex(_impl.get(), CipherTraits<C>::InitFn(), nullptr, _key.getRawBytes().data(), iv.data());
 
 		int bytesWritten = 0;
-		std::vector<std::uint8_t> ciphertext(plaintext.size() + CipherTraits<C>::blockSize);
+		std::vector<std::uint8_t> ciphertext(plaintext.size() + CipherTraits<C>::BlockSize);
 		EVP_EncryptUpdate(_impl.get(), ciphertext.data(), &bytesWritten, plaintext.data(), plaintext.size());
 
 		int finalBytesWritten = 0;
@@ -73,7 +73,7 @@ public:
 
 	virtual Message decrypt(const EncryptedData& ciphertext) const override
 	{
-		EVP_DecryptInit_ex(_impl.get(), CipherTraits<C>::initFn(), nullptr, _key.data(), ciphertext.getIV().data());
+		EVP_DecryptInit_ex(_impl.get(), CipherTraits<C>::InitFn(), nullptr, _key.getRawBytes().data(), ciphertext.getIV().data());
 
 		int bytesWritten = 0;
 		std::vector<std::uint8_t> plaintext(ciphertext.getData().size());
