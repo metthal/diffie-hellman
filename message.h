@@ -1,5 +1,6 @@
 #pragma once
 
+#include <bitset>
 #include <cstring>
 #include <memory>
 #include <type_traits>
@@ -147,12 +148,26 @@ public:
 		return *this;
 	}
 
+	template <std::size_t N>
+	const Message& operator>>(std::bitset<N>& bitset) const
+	{
+		bitset = std::bitset<N>(read<std::string>());
+		return *this;
+	}
+
 	Message& operator<<(const std::string& str)
 	{
 		for (auto itr = str.begin(); itr != str.end(); ++itr)
 			write<char>(*itr);
 
 		write<char>('\0');
+		return *this;
+	}
+
+	template <std::size_t N>
+	Message& operator<<(const std::bitset<N>& bitset)
+	{
+		write<std::string>(bitset.to_string());
 		return *this;
 	}
 

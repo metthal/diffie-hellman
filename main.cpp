@@ -34,7 +34,7 @@ const auto ffsN = "6854094740328716964537162194987044147141068353435567001423495
 	"806680871173899594707261102765034694450679268176745975368118568508461153092679300169555029731508192995713218354934548201765849829866564"
 	"705211040032434877100776622388338510367704268096270459411126422808037880654833042742865847679830939071485129307797779927643477548400238"
 	"9275941552005040119499664225566691847461439020540844282757762659001103626502226286465445073"_bigint;
-const auto ffsS = std::array<BigInt, 5>{{
+const auto ffsS = std::vector<BigInt>{
 	"134627368046300552427213971528104503574802276462752360572449387008678412666545109350352053965887049525763213237888074548437224344385138"
 		"30037582842914734413992703663821923324154958251979486288443708792361188361074274969530207122868456238651087396104167358939516245927"
 		"9671886897123837452469539076695340931353283"_bigint,
@@ -50,44 +50,16 @@ const auto ffsS = std::array<BigInt, 5>{{
 	"179666982146692031553424715309143768519745212741152008073209265291978766479247697385798876093698815035272972016125798688468091605771393"
 		"64987829414721871273044413071629544628638710464916371816036580416416817070896269491500551737921441363159992115746550168590679593655"
 		"3844375731335252153836344762325956046790606"_bigint
-}};
+};
 
 void server()
 {
 	Server server(socketPath);
 	server.start();
 
-	/// Diffie-Hellman key exchange
-	// Calculate secret exponent E and public key G^E mod P
-	auto secretExp = BigInt::random(dhPrime.getNumberOfBits() - 1);
-	auto publicKey = dhGenerator.raiseMod(secretExp, dhPrime);
-
-	// Send public key and receive public key from the other side
-	server.send(publicKey);
-	auto clientPublicKey = server.receive(
-			[&](const Message* msg) {
-				return msg->read<BigInt>();
-			}
-		);
-
-	// Calculate shared secret and derive AES key from it using SHA256
-	auto sharedSecret = clientPublicKey.raiseMod(secretExp, dhPrime);
-	auto aesKey = hash<HashAlgo::Sha256>(sharedSecret.getRawBytes());
-
-	// From now on, all communication is encrypted
-	server.setCipher<Cipher::Aes256Cbc>(aesKey);
-
-	/// Feige-Fiat-Shamir authentication
-	// Receive public key vector from the client
-	std::vector<BigInt> ffsV(ffsS.size());
-	for (auto i = 0; i < 5; ++i)
-	{
-		server.receive(
-				[&](const Message* msg) {
-					ffsV.push_back(msg->read<BigInt>());
-				}
-			);
-	}
+	server.createSecuredChannel<Cipher::Aes256Cbc, HashAlgo::Sha256>(dhGenerator, dhPrime);
+	if (!server.verifyAuthentication(ffsN))
+		return;
 
 	// Message exchange
 	for (auto i = 0; i < 2; ++i)
@@ -109,35 +81,8 @@ void client()
 	Client client(socketPath);
 	client.start();
 
-	/// Diffie-Hellman key exchange
-	// Calculate secret exponent E and public key G^E mod P
-	auto secretExp = BigInt::random(dhPrime.getNumberOfBits() - 1);
-	auto publicKey = dhGenerator.raiseMod(secretExp, dhPrime);
-
-	client.send(publicKey);
-	auto serverPublicKey = client.receive(
-			[&](const Message* msg) {
-				return msg->read<BigInt>();
-			}
-		);
-
-	// Calculate shared secret and derive AES key from it using SHA256
-	auto sharedSecret = serverPublicKey.raiseMod(secretExp, dhPrime);
-	auto aesKey = hash<HashAlgo::Sha256>(sharedSecret.getRawBytes());
-
-	// From now on, all communication is encrypted
-	client.setCipher<Cipher::Aes256Cbc>(aesKey);
-
-	/// Feige-Fiat-Shamir authentication
-	// Calculate public key vector and send it to the server
-	auto signs = randomBits<5>();
-	std::size_t bitCounter = 0;
-	std::for_each(ffsS.begin(), ffsS.end(),
-			[&](const auto& s) {
-				auto sSq = s.raise(2);
-				sSq.setSign(signs[bitCounter++] ? -1 : 1);
-				client.send(sSq.invertMod(ffsN));
-			});
+	client.createSecuredChannel<Cipher::Aes256Cbc, HashAlgo::Sha256>(dhGenerator, dhPrime);
+	client.authenticate(ffsN, ffsS);
 
 	// Message exchange
 	const auto valuesToSend = std::vector<std::string>{

@@ -22,7 +22,7 @@ std::unique_ptr<Message> Message::parse(const Span<std::uint8_t>& data)
 	if (messageLength > data.getSize() - HeaderSize)
 		return nullptr;
 
-	return std::make_unique<Message>(data.copyToVector(HeaderSize));
+	return std::make_unique<Message>(data.copyToVector(HeaderSize, messageLength));
 }
 
 std::size_t Message::getTotalSize() const

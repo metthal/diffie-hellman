@@ -4,6 +4,7 @@
 #include <deque>
 #include <memory>
 #include <string>
+#include <iostream>
 
 #include <boost/asio.hpp>
 
@@ -31,6 +32,32 @@ public:
 	Service(const std::string& socketPath);
 
 	virtual void start() = 0;
+
+	template <Cipher C, HashAlgo Hash>
+	void createSecuredChannel(const BigInt& generator, const BigInt& modulus)
+	{
+		// Calculate secret exponent E and public key G^E mod P
+		auto secretExp = BigInt::random(modulus.getNumberOfBits() - 1);
+		auto publicKey = generator.raiseMod(secretExp, modulus);
+
+		// Send public key and receive public key from the other side
+		send(publicKey);
+		auto otherSidePublicKey = receive(
+				[&](const Message* msg) {
+					return msg->read<BigInt>();
+				}
+			);
+
+		// Calculate shared secret and derive key from it using hash function
+		auto sharedSecret = otherSidePublicKey.raiseMod(secretExp, modulus);
+		auto key = hash<Hash>(sharedSecret.getRawBytes());
+
+		// From now on, all communication is encrypted
+		setCipher<C>(key);
+	}
+
+	void authenticate(const BigInt& modulus, const std::vector<BigInt>& privateKey);
+	bool verifyAuthentication(const BigInt& modulus);
 
 	template <typename Fn>
 	decltype(auto) receive(Fn&& fn)

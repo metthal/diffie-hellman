@@ -107,6 +107,13 @@ BigInt BigInt::operator*(const BigInt& rhs) const
 	return result;
 }
 
+BigInt BigInt::operator%(const BigInt& rhs) const
+{
+	BigInt result;
+	result._impl = _impl % rhs._impl;
+	return result;
+}
+
 bool BigInt::operator<(const BigInt& rhs) const
 {
 	return _impl < rhs._impl;
