@@ -25,6 +25,7 @@ struct CipherTraits<Cipher::Aes256Cbc>
 	constexpr static const InitFnType InitFn = &EVP_aes_256_cbc;
 	constexpr static const std::size_t BlockSize = AES_BLOCK_SIZE;
 	constexpr static const std::size_t IVSize = AES_BLOCK_SIZE;
+	constexpr static const char* Name = "AES-256-CBC";
 };
 
 class CipherEngineBase

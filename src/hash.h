@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <iomanip>
+#include <sstream>
 #include <vector>
 
 #include <openssl/sha.h>
@@ -37,4 +39,18 @@ template <HashAlgo Algo>
 BigInt hash(const std::vector<std::uint8_t>& data)
 {
 	return hash<Algo>({data.data(), data.size()});
+}
+
+template <HashAlgo Algo>
+std::string hashToString(const BigInt& hashValue)
+{
+	auto bytes = hashValue.getRawBytes();
+
+	std::ostringstream writer;
+	for (std::size_t i = 0; i < HashTraits<Algo>::DigestSize - bytes.size(); ++i)
+		writer << "00";
+	for (auto byte : bytes)
+		writer << std::hex << std::setw(2) << std::setfill('0') << static_cast<std::uint32_t>(byte);
+
+	return writer.str();
 }

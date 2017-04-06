@@ -46,3 +46,37 @@ std::vector<std::uint8_t> Message::serialize() const
 
 	return result;
 }
+
+const Message& Message::operator>>(std::string& str) const
+{
+	str.clear();
+
+	char c;
+	while ((c = read<char>()) != '\0')
+		str += c;
+
+	return *this;
+}
+
+const Message& Message::operator>>(boost::dynamic_bitset<std::uint64_t>& bitset) const
+{
+	bitset = boost::dynamic_bitset<std::uint64_t>(read<std::string>());
+	return *this;
+}
+
+Message& Message::operator<<(const std::string& str)
+{
+	for (auto itr = str.begin(); itr != str.end(); ++itr)
+		write<char>(*itr);
+
+	write<char>('\0');
+	return *this;
+}
+
+Message& Message::operator<<(const boost::dynamic_bitset<std::uint64_t>& bitset)
+{
+	std::string bitsetStr;
+	boost::to_string(bitset, bitsetStr);
+	write(bitsetStr);
+	return *this;
+}

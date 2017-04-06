@@ -26,6 +26,12 @@ public:
 	ConnectionFailureError() noexcept : Error("Connection failure.") {}
 };
 
+class UnableToConnectError : public Error
+{
+public:
+	UnableToConnectError() noexcept : Error("Unable to connect to server.") {}
+};
+
 class Service
 {
 public:
@@ -57,7 +63,7 @@ public:
 	}
 
 	void authenticate(const BigInt& modulus, const std::vector<BigInt>& privateKey);
-	bool verifyAuthentication(const BigInt& modulus);
+	bool verifyAuthentication(const BigInt& modulus, std::size_t keyElementCount);
 
 	template <typename Fn>
 	decltype(auto) receive(Fn&& fn)
@@ -161,7 +167,7 @@ protected:
 	template <typename T, typename... Ts>
 	void sendImpl(Message& msg, T&& arg, Ts&&... args)
 	{
-		msg.write<T>(std::forward<T>(arg));
+		msg.write(std::forward<T>(arg));
 		sendImpl(msg, std::forward<Ts>(args)...);
 	}
 

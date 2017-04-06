@@ -17,7 +17,7 @@ Service::Service(const std::string& socketPath) : _ioService(), _localEndpoint(s
 void Service::authenticate(const BigInt& modulus, const std::vector<BigInt>& privateKey)
 {
 	// Calculate public key vector and send it to the server
-	auto signs = randomBits<5>();
+	auto signs = randomBits(privateKey.size());
 	std::size_t bitCounter = 0;
 	std::for_each(privateKey.begin(), privateKey.end(),
 			[&, this](const auto& s) {
@@ -28,18 +28,18 @@ void Service::authenticate(const BigInt& modulus, const std::vector<BigInt>& pri
 	// Calculate witness and send it to the server
 	auto secretR = BigInt::random(modulus.getNumberOfBits() - 1);
 	auto witness = secretR.raiseMod(2, modulus);
-	send(randomBits<1>()[0] ? -witness : witness);
+	send(randomBits(1)[0] ? -witness : witness);
 
 	// Receive bit vector from server
 	auto usedKeyElements = receive(
 			[&](const Message* msg) {
-				return msg->read<std::bitset<5>>();
+				return msg->read<boost::dynamic_bitset<std::uint64_t>>();
 			}
 		);
 
 	// Calculate evidence
 	auto evidence = secretR;
-	for (std::size_t i = 0; i < 5; ++i)
+	for (std::size_t i = 0; i < usedKeyElements.size(); ++i)
 	{
 		if (!usedKeyElements[i])
 			continue;
@@ -49,11 +49,11 @@ void Service::authenticate(const BigInt& modulus, const std::vector<BigInt>& pri
 	send(evidence);
 }
 
-bool Service::verifyAuthentication(const BigInt& modulus)
+bool Service::verifyAuthentication(const BigInt& modulus, std::size_t keyElementCount)
 {
 	// Receive public key vector from the client
 	std::vector<BigInt> ffsV;
-	for (auto i = 0; i < 5; ++i)
+	for (std::size_t i = 0; i < keyElementCount; ++i)
 	{
 		receive([&](const Message* msg) {
 					ffsV.push_back(msg->read<BigInt>());
@@ -69,7 +69,7 @@ bool Service::verifyAuthentication(const BigInt& modulus)
 		);
 
 	// Generate bit vector for proof calculation
-	auto usedKeyElements = randomBits<5>();
+	auto usedKeyElements = randomBits(keyElementCount);
 	send(usedKeyElements);
 
 	// Receive evidence
@@ -80,7 +80,7 @@ bool Service::verifyAuthentication(const BigInt& modulus)
 		);
 
 	auto finalValue = evidence.raiseMod(2, modulus);
-	for (std::size_t i = 0; i < 5; ++i)
+	for (std::size_t i = 0; i < usedKeyElements.size(); ++i)
 	{
 		if (!usedKeyElements[i])
 			continue;
@@ -114,5 +114,9 @@ Client::Client(const std::string& socketPath) : Service(socketPath)
 
 void Client::start()
 {
-	_socket.connect(_localEndpoint);
+	boost::system::error_code errorCode;
+	_socket.connect(_localEndpoint, errorCode);
+
+	if (errorCode)
+		throw UnableToConnectError();
 }

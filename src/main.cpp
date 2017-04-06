@@ -1,21 +1,16 @@
-#include <bitset>
-#include <iomanip>
 #include <iostream>
 #include <vector>
-
-#include <openssl/evp.h>
 
 #include "big_int.h"
 #include "cipher_engine.h"
 #include "hash.h"
 #include "service.h"
-#include "utils.h"
 
-using namespace std::string_literals;
+const auto socketPath = "/tmp/kry-xmilko01.socket";
 
-const auto socketPath = "/tmp/xmilko01.socket";
-
-const auto dhPrime = "0xFFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1"
+// Diffie_Hellman parameters
+const auto dhGenerator = "2"_bigint;
+const auto dhModulus = "0xFFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1"
 	"29024E088A67CC74020BBEA63B139B22514A08798E3404DD"
 	"EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245"
 	"E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED"
@@ -27,8 +22,8 @@ const auto dhPrime = "0xFFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1"
 	"DE2BCBF6955817183995497CEA956AE515D2261898FA0510"
 	"15728E5A8AACAA68FFFFFFFFFFFFFFFF"_bigint;
 
-const auto dhGenerator = "2"_bigint;
-
+// Feige-Fiat-Shamir parameters
+const auto authenticationTries = 4;
 const auto ffsN = "6854094740328716964537162194987044147141068353435567001423495886123986431524484180445077931935555842918624004333312819870"
 	"768234350338831770704569330358466595153891946219009802123179173846336429131525643935623013369566827022032382397164259862427478592037668"
 	"806680871173899594707261102765034694450679268176745975368118568508461153092679300169555029731508192995713218354934548201765849829866564"
@@ -52,59 +47,106 @@ const auto ffsS = std::vector<BigInt>{
 		"3844375731335252153836344762325956046790606"_bigint
 };
 
-void server()
+bool server()
 {
 	Server server(socketPath);
-	server.start();
 
-	server.createSecuredChannel<Cipher::Aes256Cbc, HashAlgo::Sha256>(dhGenerator, dhPrime);
-	if (!server.verifyAuthentication(ffsN))
-		return;
-
-	// Message exchange
-	for (auto i = 0; i < 2; ++i)
+	try
 	{
-		server.receive(
-				[&](const Message* msg) {
-					auto str = msg->read<std::string>();
-					auto msgHash = msg->getHash<HashAlgo::Sha256>();
-					std::cout << "Message received: " << str << " (" << msgHash << ')' << std::endl;
+		std::cout << "=== Staring server and waiting for client..." << std::endl;
+		server.start();
 
-					server.send(msgHash);
-				}
-			);
+		std::cout << "=== Starting Diffie-Hellman key exchange..." << std::endl;
+		server.createSecuredChannel<Cipher::Aes256Cbc, HashAlgo::Sha256>(dhGenerator, dhModulus);
+		std::cout << "=== Diffie-Hellman key exchange completed. All communication is now encrypted with " << CipherTraits<Cipher::Aes256Cbc>::Name << '.' << std::endl;
+
+		for (auto i = 0; i < authenticationTries; ++i)
+		{
+			std::cout << "=== Authenticating client... ";
+			if (!server.verifyAuthentication(ffsN, ffsS.size()))
+			{
+				std::cout << "FAIL" << std::endl;
+				return false;
+			}
+			std::cout << "OK" << std::endl;
+		}
+
+		// Message exchange
+		while (true)
+		{
+			server.receive(
+					[&](const Message* msg) {
+						auto str = msg->read<std::string>();
+						auto msgHash = msg->getHash<HashAlgo::Sha256>();
+						std::cout << "=== Received: " << str << " (" << hashToString<HashAlgo::Sha256>(msgHash) << ')' << std::endl;
+						server.send(msgHash);
+					}
+				);
+		}
 	}
+	catch(const ConnectionClosedError&)
+	{
+	}
+	catch(const ConnectionFailureError&)
+	{
+		std::cerr << "=== Client disconnected unexpectedly.\n";
+		return false;
+	}
+
+	return true;
 }
 
-void client()
+bool client()
 {
 	Client client(socketPath);
-	client.start();
 
-	client.createSecuredChannel<Cipher::Aes256Cbc, HashAlgo::Sha256>(dhGenerator, dhPrime);
-	client.authenticate(ffsN, ffsS);
-
-	// Message exchange
-	const auto valuesToSend = std::vector<std::string>{
-			"Hello World",
-			"Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
-				"Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat."
-				"Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur."
-				"Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum."
-		};
-
-	for (const auto& value : valuesToSend)
+	try
 	{
-		auto sentMsg = client.send(value);
-		client.receive(
-				[&](const Message* msg) {
-					auto sentMsgHash = sentMsg.getHash<HashAlgo::Sha256>();
-					auto recvdHash = msg->read<BigInt>();
-					bool hashesEqual = sentMsgHash == recvdHash;
-					std::cout << "Received hash: " << recvdHash << " - " << (hashesEqual ? "OK" : "MISMATCH") << std::endl;
-				}
-			);
+		client.start();
+
+		std::cout << "=== Starting Diffie-Hellman key exchange..." << std::endl;
+		client.createSecuredChannel<Cipher::Aes256Cbc, HashAlgo::Sha256>(dhGenerator, dhModulus);
+		std::cout << "=== Diffie-Hellman key exchange completed. All communication is now encrypted with " << CipherTraits<Cipher::Aes256Cbc>::Name << '.' << std::endl;
+
+		for (auto i = 0; i < authenticationTries; ++i)
+		{
+			std::cout << "=== Sending authentication info to server..." << std::endl;
+			client.authenticate(ffsN, ffsS);
+		}
+
+		std::cout << "=== Awaiting input..." << std::endl;
+		bool keepAlive = true;
+		std::string line;
+		while (keepAlive && std::getline(std::cin, line))
+		{
+			auto sentMsg = client.send(line);
+			auto sentMsgHash = sentMsg.getHash<HashAlgo::Sha256>();
+			std::cout << "=== Sent: " << line << " (" << hashToString<HashAlgo::Sha256>(sentMsgHash) << ')' << std::endl;
+			keepAlive = client.receive(
+					[&](const Message* msg) {
+						auto recvdHash = msg->read<BigInt>();
+						bool hashesEqual = sentMsgHash == recvdHash;
+						std::cout << "=== Comparing hashes... " << (hashesEqual ? "OK" : "MISMATCH") << std::endl;
+						return hashesEqual;
+					}
+				);
+		}
 	}
+	catch(const ConnectionClosedError&)
+	{
+	}
+	catch(const ConnectionFailureError&)
+	{
+		std::cerr << "=== Server disconnected unexpectedly.\n";
+		return false;
+	}
+	catch(const UnableToConnectError&)
+	{
+		std::cerr << "=== Unable to connect to the server.\n";
+		return false;
+	}
+
+	return true;
 }
 
 int main(int argc, char* argv[])
@@ -113,13 +155,14 @@ int main(int argc, char* argv[])
 	if (args.size() != 1)
 		return 1;
 
+	bool ok = true;
 	if (args[0] == "-s")
-		server();
+		ok = server();
 	else if (args[0] == "-c")
-		client();
+		ok = client();
 	else
 		return 1;
 
 	EVP_cleanup();
-	return 0;
+	return ok ? 0 : 1;
 }

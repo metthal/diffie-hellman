@@ -1,10 +1,11 @@
 #pragma once
 
-#include <bitset>
 #include <cstring>
 #include <memory>
 #include <type_traits>
 #include <vector>
+
+#include <boost/dynamic_bitset.hpp>
 
 #include "big_int.h"
 #include "error.h"
@@ -50,7 +51,7 @@ public:
 	}
 
 	template <typename T>
-	std::enable_if_t<std::is_integral<T>::value, T> read() const
+	std::enable_if_t<std::is_integral<std::decay_t<T>>::value, T> read() const
 	{
 		if (_data.size() - _readPos < sizeof(T))
 			throw NotEnoughDataError();
@@ -61,7 +62,7 @@ public:
 	}
 
 	template <typename T>
-	std::enable_if_t<!std::is_integral<T>::value && std::is_default_constructible<std::decay_t<T>>::value, T> read() const
+	std::enable_if_t<!std::is_integral<std::decay_t<T>>::value && std::is_default_constructible<std::decay_t<T>>::value, T> read() const
 	{
 		T result;
 		*this >> result;
@@ -69,13 +70,13 @@ public:
 	}
 
 	template <typename T>
-	std::enable_if_t<!std::is_integral<T>::value && !std::is_default_constructible<std::decay_t<T>>::value, T> read() const
+	std::enable_if_t<!std::is_integral<std::decay_t<T>>::value && !std::is_default_constructible<std::decay_t<T>>::value, T> read() const
 	{
 		return T{*this};
 	}
 
 	template <typename T>
-	void write(std::enable_if_t<std::is_integral<T>::value, T> value)
+	std::enable_if_t<std::is_integral<std::decay_t<T>>::value> write(T value)
 	{
 		if (_writePos + sizeof(T) > _data.size())
 			_data.resize(_writePos + sizeof(T));
@@ -85,7 +86,7 @@ public:
 	}
 
 	template <typename T>
-	void write(std::enable_if_t<!std::is_integral<T>::value && std::is_default_constructible<std::decay_t<T>>::value, T&&> value)
+	std::enable_if_t<!std::is_integral<std::decay_t<T>>::value> write(T&& value)
 	{
 		*this << value;
 	}
@@ -137,39 +138,11 @@ public:
 			write<T>(*itr);
 	}
 
-	const Message& operator>>(std::string& str) const
-	{
-		str.clear();
+	const Message& operator>>(std::string& str) const;
+	const Message& operator>>(boost::dynamic_bitset<std::uint64_t>& bitset) const;
 
-		char c;
-		while ((c = read<char>()) != '\0')
-			str += c;
-
-		return *this;
-	}
-
-	template <std::size_t N>
-	const Message& operator>>(std::bitset<N>& bitset) const
-	{
-		bitset = std::bitset<N>(read<std::string>());
-		return *this;
-	}
-
-	Message& operator<<(const std::string& str)
-	{
-		for (auto itr = str.begin(); itr != str.end(); ++itr)
-			write<char>(*itr);
-
-		write<char>('\0');
-		return *this;
-	}
-
-	template <std::size_t N>
-	Message& operator<<(const std::bitset<N>& bitset)
-	{
-		write<std::string>(bitset.to_string());
-		return *this;
-	}
+	Message& operator<<(const std::string& str);
+	Message& operator<<(const boost::dynamic_bitset<std::uint64_t>& bitset);
 
 private:
 	std::vector<std::uint8_t> _data;
